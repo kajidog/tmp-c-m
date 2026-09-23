@@ -1,3 +1,44 @@
+# テナントヘッダーの実装サンプル
+
+Remix v2とApollo Client v3で、テナントIDをGraphQL引数からHTTPヘッダーへ移す構成です。
+ページとダイアログの `ApiScopeProvider` で操作対象を指定し、対象ごとにClientとキャッシュを分離します。
+Subscriptionは `graphql-sse` で送受信し、WebSocketを使いません。
+
+## 起動
+
+Node.js 22、pnpm 10を使用します。
+
+```sh
+pnpm install
+pnpm dev
+```
+
+- フロントエンド: http://127.0.0.1:5173
+- GraphQL: http://127.0.0.1:4000/graphql
+- ログイン画面の「デモ管理者でログイン」で開始できます。
+- データはバックエンドのメモリ上に保存します。再起動すると初期データに戻ります。
+
+## 確認できる画面
+
+| 画面 | テナント選択 | 編集 |
+| --- | --- | --- |
+| テナントユーザー一覧 | すべて / 単一テナント | 対象行の所属テナントを指定するダイアログ |
+| システム管理者一覧 | 非表示 | テナント指定なしのダイアログ |
+| 商品一覧 | 単一テナント必須 | テナントID・商品IDをURLに持つ詳細ページ |
+
+ユーザー名、商品名、価格を編集できます。所属テナントとロールは変更しません。
+商品詳細でテナントを切り替えると、そのテナントの商品一覧へ移動します。
+切り替え・画面遷移時に未保存の入力は破棄します。
+
+## 読む順番
+
+1. [routes/_app.tenant-users.tsx](apps/frontend/src/routes/_app.tenant-users.tsx): ストアの選択をページのProviderに適用する箇所。
+2. [features/users/TenantUsers.tsx](apps/frontend/src/features/users/TenantUsers.tsx): 全テナント一覧の内側に、対象行専用のProviderを置く箇所。
+3. [libs/api/ApiScopeProvider.tsx](apps/frontend/src/libs/api/ApiScopeProvider.tsx): 対象に応じたClientを子コンポーネントへ渡す処理。
+4. [libs/api/clients.ts](apps/frontend/src/libs/api/clients.ts): Client・ヘッダー・キャッシュの分離と一覧の無効化。
+5. [libs/api/GraphqlSseLink.ts](apps/frontend/src/libs/api/GraphqlSseLink.ts): ApolloLinkと同じインターフェイスでSSE購読を扱うクラス。
+6. [libs/cognito/index.ts](apps/frontend/src/libs/cognito/index.ts): localStorageを読むセッション取得関数と、サインイン関数。
+7. [features/auth/auth-service.ts](apps/frontend/src/features/auth/auth-service.ts): セッション確認、ユーザー情報取得、リクエストごとのトークン供給。
 
 ## テナントの指定とキャッシュ
 
@@ -25,31 +66,54 @@ Providerの対象が変わると配下を再マウントし、前のテナント
 | `tenant:tenant-b` | `X-Tenant-Id: tenant-b` | テナントB専用 |
 
 GraphQLの引数からテナントIDがなくなると、同じクエリと引数の結果をヘッダーだけでは区別できません。
-このためClient自体を分離し、正規化キャッシュと実行中クエリの重複排除の両方を分離しています。
+Apolloはルートフィールド名と引数でキャッシュキーを、queryとvariablesで実行中クエリの重複排除を決めるためです。
+
+`typePolicies` の `keyArgs` にテナントを混ぜる方法もありますが、
+ルートフィールドを追加して設定を書き忘れると、リクエストが飛ばないまま別テナントのデータが返ります。
+警告も例外も出ないため、Client自体を分ける方法を選んでいます。フィールドを追加しても混ざりようがありません。
 エンティティのキーだけを `tenantId + id` に変えても、ルートの一覧フィールドの混同は解消しません。
+
+この構成のコストは `libs/api` 一式です。
+テナントIDをGraphQLの引数で持てるなら、Apolloの標準機能だけで足りるため、この仕組みは必要ありません。
 
 Clientを生成した後で、そのClientのテナントヘッダーを変更することはありません。
 認証ヘッダーは全Clientで共通の、メモリに保持したIDトークンを使います。
 `libs` からfeatureのストアをimportしないため、依存方向を保てます。
 
-保存時には更新結果で操作先Clientのエンティティを更新します。
-ユーザー一覧は対象テナント用とglobal用の両方でルートフィールドを無効化します。
-表示中の一覧は再取得し、非表示の一覧は次回表示時に取得します。
-Client間ではキャッシュが自動同期されないため、この処理を明示しています。
+### 保存後に一覧を揃える
 
-一覧再取得だけが失敗した場合でも保存自体は完了している可能性があります。
-ダイアログはエラーを表示したまま残り、一覧の再読み込みや再保存で回復できます。
+同じClientの中は、mutationの戻り値と正規化キャッシュだけで一覧が揃います。無効化は書きません。
+商品詳細と管理者ダイアログはこれに当たるため、保存処理はmutationの呼び出しだけです。
+一覧の件数や並びが変わる操作（追加・削除）を足すときは、`evictQueryFields` でルートフィールドを捨てます。
+
+明示的な無効化が要るのはClientをまたぐときだけです。
+全テナント一覧からの編集は対象行のテナント用Clientで実行するため、global用Clientの別キャッシュには届きません。
+[TenantUsers.tsx](apps/frontend/src/features/users/TenantUsers.tsx) の `clients.invalidate(GLOBAL_SCOPE, ...)` が唯一の呼び出しです。
+表示中の一覧は再取得し、非表示の一覧は次回表示時に取得します。
+
+無効化は保存の成否と切り離します。保存はmutationの完了で確定してダイアログを閉じます。
+再取得だけが失敗した場合は、保存エラーとしてではなく一覧側の `QueryStatus` に再読み込みつきで表示します。
+
+`useApiClients` は別スコープのClientに触るためだけのフックです。
+自分のスコープのClientはApolloの `useMutation` / `useApolloClient` が渡すため、レジストリを経由しません。
 
 ## 認証とCognitoへの差し替え
 
-1. 初回に `libs/cognito` の `getSession()` を一度呼びます。同時初期化は同じPromiseを共有します。
-2. 取得したIDトークンをメモリに保持します。
-3. `Authorization: Bearer <IDトークン>` を付け、globalのClientで `me` を取得します。バックエンドはトークンの `sub` と `User.cognitoId` を照合します。
-4. ユーザー情報をZustandの認証ストアに保存し、業務画面を表示します。
-5. トークンなし、ユーザー情報なし、初期化失敗では `/login` へ遷移します。
+1. 初回に `libs/cognito` の `getSession()` を呼び、セッションの有無を確認します。同時初期化は同じPromiseを共有します。
+2. `Authorization: Bearer <IDトークン>` を付け、globalのClientで `me` を取得します。バックエンドはトークンの `sub` と `User.cognitoId` を照合します。
+3. ユーザー情報をZustandの認証ストアに保存し、業務画面を表示します。
+4. トークンなし、ユーザー情報なし、初期化失敗では `/login` へ遷移します。
 
-セッション確認を各リクエストで繰り返すことはありません。
-ログアウト・401・GraphQLの `UNAUTHENTICATED` ではトークン、ユーザー情報、全Clientを破棄します。
+トークンはメモリに保持せず、リクエストのたびに `getSession()` から取り直します。
+[clients.ts](apps/frontend/src/libs/api/clients.ts) の `getHeaders` が唯一の取得点で、
+HttpLink側の `setContext` とSSEの `headers` がどちらもこの関数を使います。
+Amplifyの `fetchAuthSession()` のように、キャッシュを返しつつ期限切れなら更新する実装を前提にしています。
+
+これで期限切れによる認証エラーはほとんど起きなくなりますが、なくなるわけではありません。
+管理者によるユーザーの無効化・削除や、Cognitoには居るがアプリ側にユーザーがいない場合は、
+トークンが有効なまま `UNAUTHENTICATED` が返るため、`onError` の処理は引き続き必要です。
+ログアウト後は、保存先にトークンが残っていてもリクエストを送りません。
+ログアウト・401・GraphQLの `UNAUTHENTICATED` ではユーザー情報と全Clientを破棄します。
 ログイン後は新しいClient群で開始し、前セッションのキャッシュを再利用しません。
 ログアウト後に古い初期化が完了しても、認証状態は復元しません。
 

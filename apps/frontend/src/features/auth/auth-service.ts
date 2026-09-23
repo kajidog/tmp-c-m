@@ -13,20 +13,30 @@ type AuthState = {
 
 export function createAuthService(transport: { uri?: string; fetch?: typeof fetch } = {}) {
   const store = createStore<AuthState>(() => ({ status: 'loading', user: null, error: null }));
-  let token: string | null = null;
+  // トークンは保持せず、リクエストのたびにセッションから取り直します。
+  // ログアウト後も保存先にトークンが残っている場合に送らないよう、このフラグで止めます。
+  let sessionActive = false;
   // StrictModeなどで同時に初期化されても、セッション確認とme取得を共有します。
   let initialization: Promise<void> | null = null;
   // ログアウト前に始まった非同期処理による、古い認証状態の復元を防ぎます。
   let generation = 0;
   const clients = createApiClients({
     ...transport,
-    getToken: () => token,
+    getToken: async () => {
+      if (!sessionActive) return null;
+      try {
+        return (await getSession())?.idToken ?? null;
+      } catch {
+        // セッションを取得できない場合は未ログイン扱いにし、onUnauthorizedへ集約します。
+        return null;
+      }
+    },
     onUnauthorized: () => reset('ログインし直してください。'),
   });
 
   function reset(error: string | null = null) {
     generation++;
-    token = null;
+    sessionActive = false;
     initialization = null;
     try {
       signOut();
@@ -49,7 +59,7 @@ export function createAuthService(transport: { uri?: string; fetch?: typeof fetc
           reset();
           return;
         }
-        token = currentSession.idToken;
+        sessionActive = true;
         const { data } = await clients
           .get(GLOBAL_SCOPE)
           .query({ query: MeDocument, fetchPolicy: 'network-only' });

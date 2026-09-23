@@ -3,7 +3,6 @@ import { useState } from 'react';
 import type { ProductQuery } from '../../api/graphql';
 import { QueryStatus } from '../../components/QueryStatus';
 import { useSaveAction } from '../../hooks/useSaveAction';
-import { useApiClients, useApiScope } from '../../libs/api/ApiScopeProvider';
 import { ProductDocument, UpdateProductDocument } from './products.api';
 
 export function ProductDetails({ id }: { id: string }) {
@@ -20,9 +19,9 @@ function ProductForm({ product }: { product: ProductQuery['product'] }) {
   const [name, setName] = useState(product.name);
   const [price, setPrice] = useState(String(product.price));
   const [saved, setSaved] = useState(false);
+  // 詳細も商品一覧も同じテナント用Clientを使うため、更新結果の正規化で一覧が揃います。
+  // 件数が変わる操作（追加・削除）を足すときは evictQueryFields で products を捨ててください。
   const [updateProduct] = useMutation(UpdateProductDocument);
-  const clients = useApiClients();
-  const scope = useApiScope();
   const { save, saving, error } = useSaveAction();
   const validPrice =
     price.trim() !== '' &&
@@ -44,7 +43,6 @@ function ProductForm({ product }: { product: ProductQuery['product'] }) {
             setName(data.updateProduct.name);
             setPrice(String(data.updateProduct.price));
           }
-          await clients.invalidate(scope, ['products']);
           setSaved(true);
         });
       }}

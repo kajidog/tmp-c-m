@@ -20,10 +20,14 @@ async function setup() {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const uri = `http://127.0.0.1:${(server.address() as AddressInfo).port}/graphql`;
   const streams: { tenantId: string | null; headers: Headers; signal: AbortSignal }[] = [];
-  const publisher = createApiClients({ uri, getToken: () => DEMO_TOKEN, onUnauthorized: vi.fn() });
+  const publisher = createApiClients({
+    uri,
+    getToken: async () => DEMO_TOKEN,
+    onUnauthorized: vi.fn(),
+  });
   const clients = createApiClients({
     uri,
-    getToken: () => DEMO_TOKEN,
+    getToken: async () => DEMO_TOKEN,
     onUnauthorized: vi.fn(),
     fetch: async (input, init) => {
       const request = new Request(input, init);

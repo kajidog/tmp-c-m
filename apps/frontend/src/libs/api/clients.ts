@@ -1,4 +1,5 @@
 import {
+  type ApolloCache,
   ApolloClient,
   HttpLink,
   InMemoryCache,
@@ -8,6 +9,7 @@ import {
 import { setContext } from '@apollo/client/link/context';
 import { onError } from '@apollo/client/link/error';
 import { getMainDefinition } from '@apollo/client/utilities';
+import type { Query } from '../../api/graphql';
 import { GraphqlSseLink } from './GraphqlSseLink';
 
 export type ApiScope = { kind: 'global' } | { kind: 'tenant'; tenantId: string };
@@ -16,8 +18,19 @@ export const scopeKey = (scope: ApiScope) =>
   scope.kind === 'global' ? 'global' : `tenant:${scope.tenantId}`;
 export type ApiClient = ApolloClient<NormalizedCacheObject>;
 
+// スキーマのルートフィールドに限定し、無効化するフィールド名の打ち間違いを型で防ぎます。
+export type QueryField = keyof Omit<Query, '__typename'>;
+
+// ルートの一覧フィールドを捨て、次の読み取りでサーバーに問い合わせ直させます。
+// エンティティ自体はmutationの戻り値で更新されるため、捨てるのは一覧の並びと件数です。
+export function evictQueryFields(cache: ApolloCache<unknown>, fields: QueryField[]) {
+  for (const fieldName of fields) cache.evict({ id: 'ROOT_QUERY', fieldName });
+  cache.gc();
+}
+
 type Options = {
-  getToken: () => string | null;
+  // リクエストのたびに呼びます。Cognitoのセッション取得は期限切れなら更新して返します。
+  getToken: () => Promise<string | null>;
   onUnauthorized: () => void;
   uri?: string;
   fetch?: typeof fetch;
@@ -41,8 +54,9 @@ export function createApiClients(options: Options) {
         options.onUnauthorized();
       }
     });
-    const getHeaders = (): Record<string, string> => {
-      const token = options.getToken();
+    // HttpLinkとSSEの両方がこの関数を使うため、トークンの取り直しはここ1箇所で済みます。
+    const getHeaders = async (): Promise<Record<string, string>> => {
+      const token = await options.getToken();
       if (!token) {
         options.onUnauthorized();
         throw new Error('ログインしてください。');
@@ -52,7 +66,9 @@ export function createApiClients(options: Options) {
         ...(tenantId ? { 'X-Tenant-Id': tenantId } : {}),
       };
     };
-    const auth = setContext(() => ({ headers: getHeaders() }));
+    const auth = setContext(async () => ({ headers: await getHeaders() }));
+    // connectedは購読を開始した後にしか発火しないため、生成後のClientをここで受け取ります。
+    let self: ApiClient | null = null;
     const sse = new GraphqlSseLink({
       url: options.uri ?? '/graphql',
       headers: getHeaders,
@@ -60,7 +76,7 @@ export function createApiClients(options: Options) {
       on: {
         connected(reconnected) {
           // 切断中の変更を補うため、再接続したら表示中のQueryを取り直します。
-          if (reconnected) void client.refetchQueries({ include: 'active' }).catch(() => undefined);
+          if (reconnected) void self?.refetchQueries({ include: 'active' }).catch(() => undefined);
         },
       },
     });
@@ -77,21 +93,18 @@ export function createApiClients(options: Options) {
       link: errors.concat(transport),
       defaultOptions: { watchQuery: { fetchPolicy: 'cache-first' } },
     });
+    self = client;
     clients.set(key, client);
     subscriptions.set(key, sse);
     return client;
   }
 
-  async function invalidate(scope: ApiScope, fields: string[]) {
+  // 別のClientのキャッシュを無効化します。同じClientの中は正規化キャッシュが揃えるため不要です。
+  async function invalidate(scope: ApiScope, fields: QueryField[]) {
     // 未生成のClientにはキャッシュがないため、無効化のためだけには生成しません。
     const client = clients.get(scopeKey(scope));
     if (!client) return;
-    await client.refetchQueries({
-      updateCache(cache) {
-        for (const fieldName of fields) cache.evict({ id: 'ROOT_QUERY', fieldName });
-        cache.gc();
-      },
-    });
+    await client.refetchQueries({ updateCache: (cache) => evictQueryFields(cache, fields) });
   }
 
   function clear() {

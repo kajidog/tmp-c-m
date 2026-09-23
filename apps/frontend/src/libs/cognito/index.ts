@@ -6,6 +6,8 @@ export const DEMO_ID_TOKEN =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjb2duaXRvLWFkbWluLTEiLCJ0b2tlbl91c2UiOiJpZCIsImlzcyI6ImxvY2FsLWRlbW8ifQ.G_xertIzvaRGCihVMN-z67X8iZE6M564shgfPEgvAGA';
 
 // 実環境では、この関数内をCognito SDKのセッション情報取得に置き換えます。
+// リクエストのたびに呼ぶため、キャッシュを返しつつ期限切れなら更新する実装が前提です。
+// Amplifyの fetchAuthSession() がこれに当たります。
 export async function getSession(): Promise<Session | null> {
   const idToken = localStorage.getItem(SESSION_KEY);
   return idToken ? { idToken } : null;

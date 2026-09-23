@@ -23,7 +23,7 @@ function setup() {
   const transport = createTransport();
   const clients = createApiClients({
     ...transport,
-    getToken: () => DEMO_TOKEN,
+    getToken: async () => DEMO_TOKEN,
     onUnauthorized: vi.fn(),
   });
   registries.push(clients);
@@ -54,7 +54,23 @@ describe('テナント別Client', () => {
     expect(requests).toHaveLength(3);
   });
 
-  it('テナント編集後に表示中の全体一覧を再取得し、非表示の一覧も無効化する', async () => {
+  it('同じClientの一覧は更新結果の正規化だけで揃い、無効化も再取得もいらない', async () => {
+    const { clients, requests } = setup();
+    const a = clients.get(tenantA);
+    await a.query({ query: TenantUsersDocument });
+    const before = requests.length;
+    await a.mutate({
+      mutation: UpdateTenantUserDocument,
+      variables: { id: 'user-a1', input: { username: '同じClientで変更' } },
+    });
+    // 飛んだのはmutationの1本だけで、一覧の再取得は起きていません。
+    expect(requests.length).toBe(before + 1);
+    expect(a.readQuery({ query: TenantUsersDocument })?.tenantUsers[0].username).toBe(
+      '同じClientで変更',
+    );
+  });
+
+  it('テナント用Clientでの編集を、別キャッシュのglobal一覧へ明示的に反映する', async () => {
     const { clients, requests } = setup();
     const global = clients.get(GLOBAL_SCOPE);
     const a = clients.get(tenantA);
@@ -70,16 +86,16 @@ describe('テナント別Client', () => {
         mutation: UpdateTenantUserDocument,
         variables: { id: 'user-a1', input: { username: '変更した名前' } },
       });
-      await Promise.all([
-        clients.invalidate(GLOBAL_SCOPE, ['tenantUsers']),
-        clients.invalidate(tenantA, ['tenantUsers']),
-      ]);
+      // global用Clientは別キャッシュのため、mutationの戻り値では更新されません。
+      expect(updates).not.toContain('変更した名前');
+      await clients.invalidate(GLOBAL_SCOPE, ['tenantUsers']);
       expect(updates).toContain('変更した名前');
+      // 操作先のテナント用Clientは無効化しなくても揃っています。
       const before = requests.length;
       expect((await a.query({ query: TenantUsersDocument })).data.tenantUsers[0].username).toBe(
         '変更した名前',
       );
-      expect(requests.length).toBe(before + 1);
+      expect(requests.length).toBe(before);
     } finally {
       subscription.unsubscribe();
     }
@@ -99,6 +115,33 @@ describe('テナント別Client', () => {
     ).toBe('新しい名前');
   });
 
+  it('無効化の再取得が失敗したら、保存側ではなく一覧の監視にエラーが届く', async () => {
+    const transport = createTransport();
+    let failing = false;
+    const clients = createApiClients({
+      ...transport,
+      fetch: async (input, init) => {
+        if (failing) throw new Error('通信失敗');
+        return transport.fetch(input, init);
+      },
+      getToken: async () => DEMO_TOKEN,
+      onUnauthorized: vi.fn(),
+    });
+    registries.push(clients);
+    const global = clients.get(GLOBAL_SCOPE);
+    await global.query({ query: TenantUsersDocument });
+    const errors: string[] = [];
+    const subscription = global
+      .watchQuery({ query: TenantUsersDocument })
+      .subscribe({ next: () => undefined, error: (error) => errors.push(error.message) });
+    await vi.waitFor(() => expect(errors).toHaveLength(0));
+
+    failing = true;
+    await expect(clients.invalidate(GLOBAL_SCOPE, ['tenantUsers'])).rejects.toThrow('通信失敗');
+    await vi.waitFor(() => expect(errors).toEqual(['通信失敗']));
+    subscription.unsubscribe();
+  });
+
   it('遅い旧テナントの応答が別テナントのキャッシュに入らない', async () => {
     const transport = createTransport();
     let release = () => {};
@@ -111,7 +154,7 @@ describe('テナント別Client', () => {
         if (new Headers(init?.headers).get('x-tenant-id') === 'tenant-a') await wait;
         return transport.fetch(input, init);
       },
-      getToken: () => DEMO_TOKEN,
+      getToken: async () => DEMO_TOKEN,
       onUnauthorized: vi.fn(),
     });
     registries.push(clients);

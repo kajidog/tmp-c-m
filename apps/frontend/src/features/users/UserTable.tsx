@@ -1,6 +1,6 @@
-import type { TenantUsersQuery } from '../../api/graphql';
+import type { UserFieldsFragment } from '../../api/graphql';
 
-export type UserRow = TenantUsersQuery['tenantUsers'][number];
+export type UserRow = UserFieldsFragment;
 
 export function UserTable({
   users,

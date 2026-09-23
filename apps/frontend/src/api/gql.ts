@@ -20,10 +20,11 @@ type Documents = {
     "\n  query Product($id: ID!) { product(id: $id) { id tenantId name price } }\n": typeof types.ProductDocument,
     "\n  mutation UpdateProduct($id: ID!, $input: UpdateProductInput!) {\n    updateProduct(id: $id, input: $input) { id tenantId name price }\n  }\n": typeof types.UpdateProductDocument,
     "\n  query Tenants { tenants { id name } }\n": typeof types.TenantsDocument,
-    "\n  query TenantUsers {\n    tenantUsers { id tenantId role username tenant { id name } }\n  }\n": typeof types.TenantUsersDocument,
-    "\n  query SystemAdministrators {\n    systemAdministrators { id tenantId role username tenant { id name } }\n  }\n": typeof types.SystemAdministratorsDocument,
-    "\n  mutation UpdateTenantUser($id: ID!, $input: UpdateUserInput!) {\n    updateTenantUser(id: $id, input: $input) { id tenantId role username tenant { id name } }\n  }\n": typeof types.UpdateTenantUserDocument,
-    "\n  mutation UpdateSystemAdministrator($id: ID!, $input: UpdateUserInput!) {\n    updateSystemAdministrator(id: $id, input: $input) { id tenantId role username tenant { id name } }\n  }\n": typeof types.UpdateSystemAdministratorDocument,
+    "\n  fragment UserFields on User {\n    id tenantId role username tenant { id name }\n  }\n": typeof types.UserFieldsFragmentDoc,
+    "\n  query TenantUsers {\n    tenantUsers { ...UserFields }\n  }\n": typeof types.TenantUsersDocument,
+    "\n  query SystemAdministrators {\n    systemAdministrators { ...UserFields }\n  }\n": typeof types.SystemAdministratorsDocument,
+    "\n  mutation UpdateTenantUser($id: ID!, $input: UpdateUserInput!) {\n    updateTenantUser(id: $id, input: $input) { ...UserFields }\n  }\n": typeof types.UpdateTenantUserDocument,
+    "\n  mutation UpdateSystemAdministrator($id: ID!, $input: UpdateUserInput!) {\n    updateSystemAdministrator(id: $id, input: $input) { ...UserFields }\n  }\n": typeof types.UpdateSystemAdministratorDocument,
 };
 const documents: Documents = {
     "\n  query Me {\n    me { id tenantId role username }\n  }\n": types.MeDocument,
@@ -32,10 +33,11 @@ const documents: Documents = {
     "\n  query Product($id: ID!) { product(id: $id) { id tenantId name price } }\n": types.ProductDocument,
     "\n  mutation UpdateProduct($id: ID!, $input: UpdateProductInput!) {\n    updateProduct(id: $id, input: $input) { id tenantId name price }\n  }\n": types.UpdateProductDocument,
     "\n  query Tenants { tenants { id name } }\n": types.TenantsDocument,
-    "\n  query TenantUsers {\n    tenantUsers { id tenantId role username tenant { id name } }\n  }\n": types.TenantUsersDocument,
-    "\n  query SystemAdministrators {\n    systemAdministrators { id tenantId role username tenant { id name } }\n  }\n": types.SystemAdministratorsDocument,
-    "\n  mutation UpdateTenantUser($id: ID!, $input: UpdateUserInput!) {\n    updateTenantUser(id: $id, input: $input) { id tenantId role username tenant { id name } }\n  }\n": types.UpdateTenantUserDocument,
-    "\n  mutation UpdateSystemAdministrator($id: ID!, $input: UpdateUserInput!) {\n    updateSystemAdministrator(id: $id, input: $input) { id tenantId role username tenant { id name } }\n  }\n": types.UpdateSystemAdministratorDocument,
+    "\n  fragment UserFields on User {\n    id tenantId role username tenant { id name }\n  }\n": types.UserFieldsFragmentDoc,
+    "\n  query TenantUsers {\n    tenantUsers { ...UserFields }\n  }\n": types.TenantUsersDocument,
+    "\n  query SystemAdministrators {\n    systemAdministrators { ...UserFields }\n  }\n": types.SystemAdministratorsDocument,
+    "\n  mutation UpdateTenantUser($id: ID!, $input: UpdateUserInput!) {\n    updateTenantUser(id: $id, input: $input) { ...UserFields }\n  }\n": types.UpdateTenantUserDocument,
+    "\n  mutation UpdateSystemAdministrator($id: ID!, $input: UpdateUserInput!) {\n    updateSystemAdministrator(id: $id, input: $input) { ...UserFields }\n  }\n": types.UpdateSystemAdministratorDocument,
 };
 
 /**
@@ -79,19 +81,23 @@ export function graphql(source: "\n  query Tenants { tenants { id name } }\n"): 
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  query TenantUsers {\n    tenantUsers { id tenantId role username tenant { id name } }\n  }\n"): (typeof documents)["\n  query TenantUsers {\n    tenantUsers { id tenantId role username tenant { id name } }\n  }\n"];
+export function graphql(source: "\n  fragment UserFields on User {\n    id tenantId role username tenant { id name }\n  }\n"): (typeof documents)["\n  fragment UserFields on User {\n    id tenantId role username tenant { id name }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  query SystemAdministrators {\n    systemAdministrators { id tenantId role username tenant { id name } }\n  }\n"): (typeof documents)["\n  query SystemAdministrators {\n    systemAdministrators { id tenantId role username tenant { id name } }\n  }\n"];
+export function graphql(source: "\n  query TenantUsers {\n    tenantUsers { ...UserFields }\n  }\n"): (typeof documents)["\n  query TenantUsers {\n    tenantUsers { ...UserFields }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  mutation UpdateTenantUser($id: ID!, $input: UpdateUserInput!) {\n    updateTenantUser(id: $id, input: $input) { id tenantId role username tenant { id name } }\n  }\n"): (typeof documents)["\n  mutation UpdateTenantUser($id: ID!, $input: UpdateUserInput!) {\n    updateTenantUser(id: $id, input: $input) { id tenantId role username tenant { id name } }\n  }\n"];
+export function graphql(source: "\n  query SystemAdministrators {\n    systemAdministrators { ...UserFields }\n  }\n"): (typeof documents)["\n  query SystemAdministrators {\n    systemAdministrators { ...UserFields }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function graphql(source: "\n  mutation UpdateSystemAdministrator($id: ID!, $input: UpdateUserInput!) {\n    updateSystemAdministrator(id: $id, input: $input) { id tenantId role username tenant { id name } }\n  }\n"): (typeof documents)["\n  mutation UpdateSystemAdministrator($id: ID!, $input: UpdateUserInput!) {\n    updateSystemAdministrator(id: $id, input: $input) { id tenantId role username tenant { id name } }\n  }\n"];
+export function graphql(source: "\n  mutation UpdateTenantUser($id: ID!, $input: UpdateUserInput!) {\n    updateTenantUser(id: $id, input: $input) { ...UserFields }\n  }\n"): (typeof documents)["\n  mutation UpdateTenantUser($id: ID!, $input: UpdateUserInput!) {\n    updateTenantUser(id: $id, input: $input) { ...UserFields }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  mutation UpdateSystemAdministrator($id: ID!, $input: UpdateUserInput!) {\n    updateSystemAdministrator(id: $id, input: $input) { ...UserFields }\n  }\n"): (typeof documents)["\n  mutation UpdateSystemAdministrator($id: ID!, $input: UpdateUserInput!) {\n    updateSystemAdministrator(id: $id, input: $input) { ...UserFields }\n  }\n"];
 
 export function graphql(source: string) {
   return (documents as any)[source] ?? {};
