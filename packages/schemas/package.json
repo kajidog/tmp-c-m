@@ -1,0 +1,8 @@
+{
+  "name": "@example/schemas",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./schema.graphql": "./schema.graphql"
+  }
+}

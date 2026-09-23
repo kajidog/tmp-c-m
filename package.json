@@ -1,0 +1,26 @@
+{
+  "name": "tenant-header-example",
+  "private": true,
+  "packageManager": "pnpm@10.29.3",
+  "scripts": {
+    "dev": "pnpm codegen && pnpm --parallel --filter @example/frontend --filter @example/backend dev",
+    "codegen": "graphql-codegen --config codegen.ts",
+    "typecheck": "tsc --noEmit && pnpm -r typecheck",
+    "build": "pnpm codegen && pnpm -r build",
+    "test": "vitest run",
+    "test:e2e": "pnpm codegen && playwright test",
+    "format": "biome format --write .",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
+    "@graphql-codegen/cli": "^6.0.0",
+    "@graphql-codegen/client-preset": "^5.0.0",
+    "@playwright/test": "^1.58.0",
+    "@types/node": "^22.0.0",
+    "graphql": "^16.11.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

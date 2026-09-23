@@ -1,0 +1,52 @@
+enum Role {
+  TENANT_USER
+  SYSTEM_ADMIN
+}
+
+type Tenant {
+  id: ID!
+  name: String!
+}
+
+type User {
+  id: ID!
+  tenantId: ID
+  tenant: Tenant
+  role: Role!
+  username: String!
+}
+
+type Product {
+  id: ID!
+  tenantId: ID!
+  name: String!
+  price: Int!
+}
+
+input UpdateUserInput {
+  username: String!
+}
+
+input UpdateProductInput {
+  name: String!
+  price: Int!
+}
+
+type Query {
+  me: User
+  tenants: [Tenant!]!
+  tenantUsers: [User!]!
+  systemAdministrators: [User!]!
+  products: [Product!]!
+  product(id: ID!): Product!
+}
+
+type Mutation {
+  updateTenantUser(id: ID!, input: UpdateUserInput!): User!
+  updateSystemAdministrator(id: ID!, input: UpdateUserInput!): User!
+  updateProduct(id: ID!, input: UpdateProductInput!): Product!
+}
+
+type Subscription {
+  productChanged: Product!
+}
