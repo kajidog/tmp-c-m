@@ -27,3 +27,8 @@ export const UpdateSystemAdministratorDocument = graphql(`
     updateSystemAdministrator(id: $id, input: $input) { ...UserFields }
   }
 `);
+export const CreateTenantUserDocument = graphql(`
+  mutation CreateTenantUser($input: CreateUserInput!) {
+    createTenantUser(input: $input) { ...UserFields }
+  }
+`);

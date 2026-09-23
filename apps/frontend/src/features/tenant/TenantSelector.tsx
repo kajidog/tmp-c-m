@@ -1,25 +1,34 @@
 import { useQuery } from '@apollo/client';
 import { QueryStatus } from '../../components/QueryStatus';
+import { useApiClient } from '../../libs/api/ApiClientsProvider';
+import { GLOBAL_SCOPE } from '../../libs/api/clients';
 import { TenantsDocument } from './tenant.api';
 
 export function TenantSelector({
   value,
   allowAll,
   onChange,
+  label = 'テナント',
+  disabled = false,
 }: {
   value: string;
   allowAll: boolean;
   onChange: (value: string) => void;
+  label?: string;
+  disabled?: boolean;
 }) {
-  const { data, loading, error, refetch } = useQuery(TenantsDocument);
+  // テナントの一覧自体はどのテナントにも属さないため、常にglobalで取得します。
+  const { data, loading, error, refetch } = useQuery(TenantsDocument, {
+    client: useApiClient(GLOBAL_SCOPE),
+  });
   return (
     <div className="tenant-selector">
       <label>
-        テナント
+        {label}
         <select
           value={!allowAll && value === 'all' ? '' : value}
           onChange={(e) => onChange(e.target.value)}
-          disabled={loading || !!error}
+          disabled={disabled || loading || !!error}
         >
           {allowAll ? (
             <option value="all">すべてのテナント</option>

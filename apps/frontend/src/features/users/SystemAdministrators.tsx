@@ -1,27 +1,28 @@
 import { useMutation, useQuery } from '@apollo/client';
 import { useState } from 'react';
 import { QueryStatus } from '../../components/QueryStatus';
-import { ApiScopeProvider } from '../../libs/api/ApiScopeProvider';
+import { useApiClient } from '../../libs/api/ApiClientsProvider';
 import { GLOBAL_SCOPE } from '../../libs/api/clients';
 import { UserEditDialog } from './UserEditDialog';
 import { type UserRow, UserTable } from './UserTable';
 import { SystemAdministratorsDocument, UpdateSystemAdministratorDocument } from './users.api';
 
+// システム管理者はどのテナントにも属さないため、常にglobalで取得・更新します。
 export function SystemAdministrators({ onUpdated }: { onUpdated: (user: UserRow) => void }) {
-  const { data, loading, error, refetch } = useQuery(SystemAdministratorsDocument);
+  const { data, loading, error, refetch } = useQuery(SystemAdministratorsDocument, {
+    client: useApiClient(GLOBAL_SCOPE),
+  });
   const [editing, setEditing] = useState<UserRow | null>(null);
   return (
     <>
       <QueryStatus loading={loading} error={error} onRetry={refetch} />
       {data && !error && <UserTable users={data.systemAdministrators} onEdit={setEditing} />}
       {editing && (
-        <ApiScopeProvider scope={GLOBAL_SCOPE}>
-          <AdministratorEditor
-            user={editing}
-            onUpdated={onUpdated}
-            onClose={() => setEditing(null)}
-          />
-        </ApiScopeProvider>
+        <AdministratorEditor
+          user={editing}
+          onUpdated={onUpdated}
+          onClose={() => setEditing(null)}
+        />
       )}
     </>
   );
@@ -36,7 +37,9 @@ function AdministratorEditor({
   onClose: () => void;
   onUpdated: (user: UserRow) => void;
 }) {
-  const [updateUser] = useMutation(UpdateSystemAdministratorDocument);
+  const [updateUser] = useMutation(UpdateSystemAdministratorDocument, {
+    client: useApiClient(GLOBAL_SCOPE),
+  });
   return (
     <UserEditDialog
       user={user}

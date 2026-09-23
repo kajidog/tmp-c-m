@@ -21,6 +21,8 @@ const globalOnly = (context: Context) => {
 
 // サーバーごとにデータを保持するため、テストでもDBの準備は不要です。
 export function createApp(data = createData()) {
+  // 初期データのIDと重ならない連番で、作成したユーザーのIDを振ります。
+  let userSequence = 100;
   const pubsub = createPubSub<{
     productChanged: [tenantId: string, product: (typeof data.products)[number]];
   }>();
@@ -52,6 +54,25 @@ export function createApp(data = createData()) {
         },
       },
       Mutation: {
+        // 作成先はヘッダーのテナントだけで決め、inputには持たせません。
+        createTenantUser: (
+          _: unknown,
+          { input }: { input: { username: string } },
+          ctx: Context,
+        ) => {
+          const tenantId = requiredTenant(ctx);
+          const username = requiredName(input.username);
+          const id = `user-${++userSequence}`;
+          const user: User = {
+            id,
+            cognitoId: `cognito-${id}`,
+            tenantId,
+            role: 'TENANT_USER',
+            username,
+          };
+          data.users.push(user);
+          return user;
+        },
         updateTenantUser: (
           _: unknown,
           { id, input }: { id: string; input: { username: string } },

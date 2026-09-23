@@ -3,25 +3,33 @@ import { useState } from 'react';
 import type { ProductQuery } from '../../api/graphql';
 import { QueryStatus } from '../../components/QueryStatus';
 import { useSaveAction } from '../../hooks/useSaveAction';
+import { useApiClient } from '../../libs/api/ApiClientsProvider';
+import type { TenantScope } from '../../libs/api/clients';
 import { ProductDocument, UpdateProductDocument } from './products.api';
 
-export function ProductDetails({ id }: { id: string }) {
-  const { data, loading, error, refetch } = useQuery(ProductDocument, { variables: { id } });
+export function ProductDetails({ scope, id }: { scope: TenantScope; id: string }) {
+  const client = useApiClient(scope);
+  const { data, loading, error, refetch } = useQuery(ProductDocument, {
+    client,
+    variables: { id },
+  });
   return (
     <>
       <QueryStatus loading={loading} error={error} onRetry={refetch} />
-      {data && !error && <ProductForm key={data.product.id} product={data.product} />}
+      {data && !error && <ProductForm key={data.product.id} scope={scope} product={data.product} />}
     </>
   );
 }
 
-function ProductForm({ product }: { product: ProductQuery['product'] }) {
+function ProductForm({ scope, product }: { scope: TenantScope; product: ProductQuery['product'] }) {
   const [name, setName] = useState(product.name);
   const [price, setPrice] = useState(String(product.price));
   const [saved, setSaved] = useState(false);
   // 詳細も商品一覧も同じテナント用Clientを使うため、更新結果の正規化で一覧が揃います。
   // 件数が変わる操作（追加・削除）を足すときは evictQueryFields で products を捨ててください。
-  const [updateProduct] = useMutation(UpdateProductDocument);
+  const [updateProduct] = useMutation(UpdateProductDocument, {
+    client: useApiClient(scope),
+  });
   const { save, saving, error } = useSaveAction();
   const validPrice =
     price.trim() !== '' &&

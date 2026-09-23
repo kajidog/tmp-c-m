@@ -25,6 +25,7 @@ type Documents = {
     "\n  query SystemAdministrators {\n    systemAdministrators { ...UserFields }\n  }\n": typeof types.SystemAdministratorsDocument,
     "\n  mutation UpdateTenantUser($id: ID!, $input: UpdateUserInput!) {\n    updateTenantUser(id: $id, input: $input) { ...UserFields }\n  }\n": typeof types.UpdateTenantUserDocument,
     "\n  mutation UpdateSystemAdministrator($id: ID!, $input: UpdateUserInput!) {\n    updateSystemAdministrator(id: $id, input: $input) { ...UserFields }\n  }\n": typeof types.UpdateSystemAdministratorDocument,
+    "\n  mutation CreateTenantUser($input: CreateUserInput!) {\n    createTenantUser(input: $input) { ...UserFields }\n  }\n": typeof types.CreateTenantUserDocument,
 };
 const documents: Documents = {
     "\n  query Me {\n    me { id tenantId role username }\n  }\n": types.MeDocument,
@@ -38,6 +39,7 @@ const documents: Documents = {
     "\n  query SystemAdministrators {\n    systemAdministrators { ...UserFields }\n  }\n": types.SystemAdministratorsDocument,
     "\n  mutation UpdateTenantUser($id: ID!, $input: UpdateUserInput!) {\n    updateTenantUser(id: $id, input: $input) { ...UserFields }\n  }\n": types.UpdateTenantUserDocument,
     "\n  mutation UpdateSystemAdministrator($id: ID!, $input: UpdateUserInput!) {\n    updateSystemAdministrator(id: $id, input: $input) { ...UserFields }\n  }\n": types.UpdateSystemAdministratorDocument,
+    "\n  mutation CreateTenantUser($input: CreateUserInput!) {\n    createTenantUser(input: $input) { ...UserFields }\n  }\n": types.CreateTenantUserDocument,
 };
 
 /**
@@ -98,6 +100,10 @@ export function graphql(source: "\n  mutation UpdateTenantUser($id: ID!, $input:
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  mutation UpdateSystemAdministrator($id: ID!, $input: UpdateUserInput!) {\n    updateSystemAdministrator(id: $id, input: $input) { ...UserFields }\n  }\n"): (typeof documents)["\n  mutation UpdateSystemAdministrator($id: ID!, $input: UpdateUserInput!) {\n    updateSystemAdministrator(id: $id, input: $input) { ...UserFields }\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  mutation CreateTenantUser($input: CreateUserInput!) {\n    createTenantUser(input: $input) { ...UserFields }\n  }\n"): (typeof documents)["\n  mutation CreateTenantUser($input: CreateUserInput!) {\n    createTenantUser(input: $input) { ...UserFields }\n  }\n"];
 
 export function graphql(source: string) {
   return (documents as any)[source] ?? {};

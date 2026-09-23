@@ -1,11 +1,14 @@
 import { useQuery, useSubscription } from '@apollo/client';
 import { QueryStatus } from '../../components/QueryStatus';
+import { useApiClient } from '../../libs/api/ApiClientsProvider';
+import type { TenantScope } from '../../libs/api/clients';
 import { ProductChangedDocument, ProductsDocument } from './products.api';
 
-export function Products({ onEdit }: { onEdit: (id: string) => void }) {
-  const { data, loading, error, refetch } = useQuery(ProductsDocument);
+export function Products({ scope, onEdit }: { scope: TenantScope; onEdit: (id: string) => void }) {
+  const client = useApiClient(scope);
+  const { data, loading, error, refetch } = useQuery(ProductsDocument, { client });
   // 同じClientの正規化キャッシュに受信した商品を反映し、一覧を更新します。
-  const { error: subscriptionError } = useSubscription(ProductChangedDocument);
+  const { error: subscriptionError } = useSubscription(ProductChangedDocument, { client });
   return (
     <>
       <QueryStatus loading={loading} error={error} onRetry={refetch} />

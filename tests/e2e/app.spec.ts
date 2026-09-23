@@ -43,6 +43,43 @@ test('全テナント一覧の編集と切り替えでヘッダー・一覧が�
   expect(requests.every((r) => r.auth === `Bearer ${DEMO_ID_TOKEN}`)).toBe(true);
 });
 
+test('ユーザー追加はダイアログで選んだテナントで送り、切り替えても入力を保つ', async ({ page }) => {
+  await login(page);
+  const selector = page.getByRole('combobox', { name: 'テナント', exact: true });
+  await page.getByRole('button', { name: 'ユーザーを追加' }).click();
+  const dialog = page.getByRole('dialog');
+  const target = dialog.getByRole('combobox', { name: '作成先テナント' });
+  // 一覧が「すべて」なので未選択から始まり、選ぶまで追加できません。
+  await expect(target).toHaveValue('');
+  await dialog.getByLabel('ユーザー名').fill('追加したユーザー');
+  await expect(dialog.getByRole('button', { name: '追加', exact: true })).toBeDisabled();
+  await target.selectOption('tenant-a');
+  await target.selectOption('tenant-b');
+  await expect(dialog.getByLabel('ユーザー名')).toHaveValue('追加したユーザー');
+  const requestPromise = page.waitForRequest(
+    (request) =>
+      request.url().endsWith('/graphql') &&
+      request.postDataJSON()?.operationName === 'CreateTenantUser',
+  );
+  await dialog.getByRole('button', { name: '追加', exact: true }).click();
+  expect((await requestPromise).headers()['x-tenant-id']).toBe('tenant-b');
+  await expect(dialog).toHaveCount(0);
+  // 一覧の選択はダイアログの選択に引きずられません。
+  await expect(selector).toHaveValue('all');
+  const row = page.getByRole('row').filter({ hasText: '追加したユーザー' });
+  await expect(row).toContainText('テナントB');
+  await selector.selectOption('tenant-b');
+  await expect(row).toBeVisible();
+  await selector.selectOption('tenant-a');
+  await expect(row).toHaveCount(0);
+
+  // 単一テナントの一覧から開くと、そのテナントが初期値になります。
+  await page.getByRole('button', { name: 'ユーザーを追加' }).click();
+  await expect(
+    page.getByRole('dialog').getByRole('combobox', { name: '作成先テナント' }),
+  ).toHaveValue('tenant-a');
+});
+
 test('管理者画面ではテナントを付けず、自分の表示名も更新する', async ({ page }) => {
   await login(page);
   await page.getByRole('combobox', { name: 'テナント', exact: true }).selectOption('tenant-b');
