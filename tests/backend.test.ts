@@ -44,6 +44,32 @@ describe('バックエンドのテナント境界', () => {
     expect(body.errors[0].extensions.code).toBe(tenantId ? 'NOT_FOUND' : 'BAD_USER_INPUT');
   });
 
+  it.each([
+    [null, 'BAD_USER_INPUT'],
+    ['tenant-b', null],
+  ])('ユーザー作成はヘッダー %s のテナントに作る', async (tenantId, code) => {
+    const response = await createApp().fetch('http://localhost/graphql', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${DEMO_TOKEN}`,
+        ...(tenantId ? { 'x-tenant-id': tenantId } : {}),
+      },
+      body: JSON.stringify({
+        query:
+          'mutation { createTenantUser(input: {username: "新規"}) { tenantId role username } }',
+      }),
+    });
+    const body = await response.json();
+    if (code) expect(body.errors[0].extensions.code).toBe(code);
+    else
+      expect(body.data.createTenantUser).toEqual({
+        tenantId: 'tenant-b',
+        role: 'TENANT_USER',
+        username: '新規',
+      });
+  });
+
   it('テナント指定なしの商品取得を拒否する', async () => {
     const response = await createApp().fetch('http://localhost/graphql', {
       method: 'POST',

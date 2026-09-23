@@ -5,13 +5,16 @@ import { QueryStatus } from '../components/QueryStatus';
 import { useTenantStore } from '../features/tenant/stores/tenant-store';
 import { TenantSelector } from '../features/tenant/TenantSelector';
 import { TenantsDocument } from '../features/tenant/tenant.api';
-import { ApiScopeProvider } from '../libs/api/ApiScopeProvider';
+import { useApiClient } from '../libs/api/ApiClientsProvider';
+import { GLOBAL_SCOPE } from '../libs/api/clients';
 import { ProductDetailsPage } from '../pages/ProductsPage';
 
 export default function ProductDetailsRoute() {
   const navigate = useNavigate();
   const { tenantId = '', productId = '' } = useParams();
-  const { data, loading, error, refetch } = useQuery(TenantsDocument);
+  const { data, loading, error, refetch } = useQuery(TenantsDocument, {
+    client: useApiClient(GLOBAL_SCOPE),
+  });
   const selectTenant = useTenantStore((s) => s.selectTenant);
   const validTenant = data?.tenants.some((t) => t.id === tenantId);
   useEffect(() => {
@@ -35,14 +38,14 @@ export default function ProductDetailsRoute() {
           navigate('/products');
         }}
       />
-      <ApiScopeProvider scope={{ kind: 'tenant', tenantId }}>
-        <ProductDetailsPage
-          id={productId}
-          onBack={() => {
-            navigate('/products');
-          }}
-        />
-      </ApiScopeProvider>
+      <ProductDetailsPage
+        key={`${tenantId}/${productId}`}
+        scope={{ kind: 'tenant', tenantId }}
+        id={productId}
+        onBack={() => {
+          navigate('/products');
+        }}
+      />
     </>
   );
 }

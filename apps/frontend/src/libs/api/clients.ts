@@ -12,7 +12,8 @@ import { getMainDefinition } from '@apollo/client/utilities';
 import type { Query } from '../../api/graphql';
 import { GraphqlSseLink } from './GraphqlSseLink';
 
-export type ApiScope = { kind: 'global' } | { kind: 'tenant'; tenantId: string };
+export type TenantScope = { kind: 'tenant'; tenantId: string };
+export type ApiScope = { kind: 'global' } | TenantScope;
 export const GLOBAL_SCOPE: ApiScope = { kind: 'global' };
 export const scopeKey = (scope: ApiScope) =>
   scope.kind === 'global' ? 'global' : `tenant:${scope.tenantId}`;

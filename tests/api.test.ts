@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEMO_TOKEN } from '../apps/backend/src/auth';
 import { ProductsDocument } from '../apps/frontend/src/features/products/products.api';
 import {
+  CreateTenantUserDocument,
   TenantUsersDocument,
   UpdateTenantUserDocument,
 } from '../apps/frontend/src/features/users/users.api';
@@ -99,6 +100,35 @@ describe('テナント別Client', () => {
     } finally {
       subscription.unsubscribe();
     }
+  });
+
+  it('作成は送信時に選んだテナントで送り、作成先とglobalの一覧を無効化すると揃う', async () => {
+    const { clients, requests } = setup();
+    const global = clients.get(GLOBAL_SCOPE);
+    await global.query({ query: TenantUsersDocument });
+    await clients.get(tenantB).query({ query: TenantUsersDocument });
+    await clients.get(tenantA).query({ query: TenantUsersDocument });
+
+    await clients.get(tenantB).mutate({
+      mutation: CreateTenantUserDocument,
+      variables: { input: { username: '追加したユーザー' } },
+    });
+    expect(requests.at(-1)?.headers.get('x-tenant-id')).toBe('tenant-b');
+    // 件数が変わる操作は、同じClientでも正規化だけでは一覧に入りません。
+    expect(
+      clients.get(tenantB).readQuery({ query: TenantUsersDocument })?.tenantUsers,
+    ).toHaveLength(1);
+
+    await clients.invalidate(tenantB, ['tenantUsers']);
+    await clients.invalidate(GLOBAL_SCOPE, ['tenantUsers']);
+    const names = async (scope: Parameters<typeof clients.get>[0]) =>
+      (await clients.get(scope).query({ query: TenantUsersDocument })).data.tenantUsers.map(
+        (u) => u.username,
+      );
+    expect(await names(tenantB)).toContain('追加したユーザー');
+    expect(await names(GLOBAL_SCOPE)).toContain('追加したユーザー');
+    // 作成先ではないテナントの一覧には入りません。
+    expect(await names(tenantA)).not.toContain('追加したユーザー');
   });
 
   it('非表示の全体一覧も再表示時に更新される', async () => {

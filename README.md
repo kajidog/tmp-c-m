@@ -1,7 +1,7 @@
 # テナントヘッダーの実装サンプル
 
 Remix v2とApollo Client v3で、テナントIDをGraphQL引数からHTTPヘッダーへ移す構成です。
-ページとダイアログの `ApiScopeProvider` で操作対象を指定し、対象ごとにClientとキャッシュを分離します。
+`useQuery` / `useMutation` の呼び出しごとに対象テナントのClientを明示して渡し、対象ごとにClientとキャッシュを分離します。
 Subscriptionは `graphql-sse` で送受信し、WebSocketを使いません。
 
 ## 起動
@@ -22,41 +22,55 @@ pnpm dev
 
 | 画面 | テナント選択 | 編集 |
 | --- | --- | --- |
-| テナントユーザー一覧 | すべて / 単一テナント | 対象行の所属テナントを指定するダイアログ |
+| テナントユーザー一覧 | すべて / 単一テナント | 対象行の所属テナントを指定するダイアログ、作成先テナントを選ぶ追加ダイアログ |
 | システム管理者一覧 | 非表示 | テナント指定なしのダイアログ |
 | 商品一覧 | 単一テナント必須 | テナントID・商品IDをURLに持つ詳細ページ |
 
 ユーザー名、商品名、価格を編集できます。所属テナントとロールは変更しません。
+テナントユーザーは追加もできます。作成先テナントはダイアログ内で選び、一覧のテナント選択は変わりません。
 商品詳細でテナントを切り替えると、そのテナントの商品一覧へ移動します。
 切り替え・画面遷移時に未保存の入力は破棄します。
 
 ## 読む順番
 
-1. [routes/_app.tenant-users.tsx](apps/frontend/src/routes/_app.tenant-users.tsx): ストアの選択をページのProviderに適用する箇所。
-2. [features/users/TenantUsers.tsx](apps/frontend/src/features/users/TenantUsers.tsx): 全テナント一覧の内側に、対象行専用のProviderを置く箇所。
-3. [libs/api/ApiScopeProvider.tsx](apps/frontend/src/libs/api/ApiScopeProvider.tsx): 対象に応じたClientを子コンポーネントへ渡す処理。
-4. [libs/api/clients.ts](apps/frontend/src/libs/api/clients.ts): Client・ヘッダー・キャッシュの分離と一覧の無効化。
-5. [libs/api/GraphqlSseLink.ts](apps/frontend/src/libs/api/GraphqlSseLink.ts): ApolloLinkと同じインターフェイスでSSE購読を扱うクラス。
-6. [libs/cognito/index.ts](apps/frontend/src/libs/cognito/index.ts): localStorageを読むセッション取得関数と、サインイン関数。
-7. [features/auth/auth-service.ts](apps/frontend/src/features/auth/auth-service.ts): セッション確認、ユーザー情報取得、リクエストごとのトークン供給。
+1. [routes/_app.tenant-users.tsx](apps/frontend/src/routes/_app.tenant-users.tsx): ストアの選択から一覧の対象を決め、propsで渡す箇所。
+2. [features/users/TenantUsers.tsx](apps/frontend/src/features/users/TenantUsers.tsx): 一覧は受け取った対象、編集は対象行の所属テナントのClientを渡す箇所。
+3. [features/users/TenantUserCreateDialog.tsx](apps/frontend/src/features/users/TenantUserCreateDialog.tsx): フォームで選んだテナントのClientで、送信時に作成する箇所。
+4. [libs/api/ApiClientsProvider.tsx](apps/frontend/src/libs/api/ApiClientsProvider.tsx): Client群を配り、`useApiClient(scope)` で1つを取り出すフック。
+5. [libs/api/clients.ts](apps/frontend/src/libs/api/clients.ts): Client・ヘッダー・キャッシュの分離と一覧の無効化。
+6. [libs/api/GraphqlSseLink.ts](apps/frontend/src/libs/api/GraphqlSseLink.ts): ApolloLinkと同じインターフェイスでSSE購読を扱うクラス。
+7. [libs/cognito/index.ts](apps/frontend/src/libs/cognito/index.ts): localStorageを読むセッション取得関数と、サインイン関数。
+8. [features/auth/auth-service.ts](apps/frontend/src/features/auth/auth-service.ts): セッション確認、ユーザー情報取得、リクエストごとのトークン供給。
 
 ## テナントの指定とキャッシュ
 
-```tsx
-// routesがZustandの選択をページに適用します。
-<ApiScopeProvider scope={pageScope}>
-  <TenantUsersPage />
-</ApiScopeProvider>
+**リクエストのテナントは、呼び出し箇所に書いたClientで決まります。** ほかに決める仕組みはありません。
 
-// 一覧の選択とは独立して、編集する行のテナントを指定します。
-<ApiScopeProvider scope={{ kind: 'tenant', tenantId: user.tenantId }}>
-  <TenantUserEditor user={user} onClose={onClose} />
-</ApiScopeProvider>
+```tsx
+// routesがZustandの選択から一覧の対象を決め、propsで渡します。
+<TenantUsersPage key={scopeKey(scope)} scope={scope} />
+
+// 一覧は受け取った対象で取得します。
+useQuery(TenantUsersDocument, { client: useApiClient(scope) });
+
+// 一覧の選択とは独立して、編集する行のテナントで更新します。
+useMutation(UpdateTenantUserDocument, {
+  client: useApiClient({ kind: 'tenant', tenantId: user.tenantId }),
+});
+
+// 対象が送信時に決まる操作（作成先を選ぶフォーム）は、その時点のClientで送ります。
+clients.get({ kind: 'tenant', tenantId }).mutate({ mutation: CreateTenantUserDocument, ... });
 ```
 
-各featureでは通常の `useQuery` / `useMutation` を使います。
-最も近いProviderのClientがリクエストを送るため、APIフックが選択ストアを直接参照する必要はありません。
-Providerの対象が変わると配下を再マウントし、前のテナントの表示・フォーム状態を持ち越しません。
+次のルールで運用します。
+
+1. 選択に応じて変わる対象は、routeで決めてpropsで渡します。featureの中でテナント選択のストアを読みません。
+2. テナントに属さないデータ（テナント一覧、システム管理者）は、featureの中で `GLOBAL_SCOPE` を明示します。
+3. `useQuery` / `useMutation` / `useSubscription` には必ず `client` を渡します。
+   `ApolloProvider` を置いていないため、渡し忘れはApolloのエラーになり、黙って別の対象へ送られません。
+4. 対象が変わったときに表示・フォーム状態を持ち越さないよう、ページやフォームに `key={scopeKey(scope)}` を付けます。
+5. 作成先などフォームの入力として選ぶテナントは `useState` で持ちます。入力は再マウントされないため、切り替えても消えません。
+
 同じ対象のClientは再利用するため、同じテナントに戻ったときはキャッシュを使えます。
 
 | 対象 | ヘッダー | Clientとキャッシュ |
@@ -67,6 +81,8 @@ Providerの対象が変わると配下を再マウントし、前のテナント
 
 GraphQLの引数からテナントIDがなくなると、同じクエリと引数の結果をヘッダーだけでは区別できません。
 Apolloはルートフィールド名と引数でキャッシュキーを、queryとvariablesで実行中クエリの重複排除を決めるためです。
+1つのClientでoperationの `context` にテナントを渡してLinkでヘッダーへ移す方法も、同じ理由で混ざります。
+`context` はキャッシュキーにも重複排除にも入りません。
 
 `typePolicies` の `keyArgs` にテナントを混ぜる方法もありますが、
 ルートフィールドを追加して設定を書き忘れると、リクエストが飛ばないまま別テナントのデータが返ります。
@@ -84,18 +100,18 @@ Clientを生成した後で、そのClientのテナントヘッダーを変更�
 
 同じClientの中は、mutationの戻り値と正規化キャッシュだけで一覧が揃います。無効化は書きません。
 商品詳細と管理者ダイアログはこれに当たるため、保存処理はmutationの呼び出しだけです。
-一覧の件数や並びが変わる操作（追加・削除）を足すときは、`evictQueryFields` でルートフィールドを捨てます。
 
-明示的な無効化が要るのはClientをまたぐときだけです。
+明示的な無効化が要るのは、Clientをまたぐときと、一覧の件数や並びが変わるときです。
 全テナント一覧からの編集は対象行のテナント用Clientで実行するため、global用Clientの別キャッシュには届きません。
-[TenantUsers.tsx](apps/frontend/src/features/users/TenantUsers.tsx) の `clients.invalidate(GLOBAL_SCOPE, ...)` が唯一の呼び出しです。
-表示中の一覧は再取得し、非表示の一覧は次回表示時に取得します。
+[TenantUsers.tsx](apps/frontend/src/features/users/TenantUsers.tsx) で `clients.invalidate(GLOBAL_SCOPE, ...)` を呼びます。
+ユーザーの追加は件数が変わるため、[TenantUserCreateDialog.tsx](apps/frontend/src/features/users/TenantUserCreateDialog.tsx) で作成先テナントとglobalの両方を無効化します。
+未生成のClientは無効化の対象から外れます。表示中の一覧は再取得し、非表示の一覧は次回表示時に取得します。
 
 無効化は保存の成否と切り離します。保存はmutationの完了で確定してダイアログを閉じます。
 再取得だけが失敗した場合は、保存エラーとしてではなく一覧側の `QueryStatus` に再読み込みつきで表示します。
 
-`useApiClients` は別スコープのClientに触るためだけのフックです。
-自分のスコープのClientはApolloの `useMutation` / `useApolloClient` が渡すため、レジストリを経由しません。
+`useApiClient(scope)` はフックに渡すClientを1つ取り出します。
+`useApiClients` はClient群そのものを返し、送信時に対象が決まる操作と、別スコープのキャッシュの無効化に使います。
 
 ## 認証とCognitoへの差し替え
 
@@ -173,7 +189,7 @@ Remix v2の対応範囲に合わせ、React 18を使用しています。
 apps/frontend/src/
   root.tsx      HTML・認証初期化
   api/          Codegen生成物
-  routes/       Remixのルート、認証ガード、テナント選択、Provider
+  routes/       Remixのルート、認証ガード、テナント選択と対象の決定
   pages/        画面の組み立て
   features/     ドメインのUI、*.api.ts、認証・テナントのストア
   components/   共通UI
@@ -189,7 +205,7 @@ packages/schemas/
 ```
 
 依存方向は `routes → pages → features → libs` です。
-routesは画面を組み立てるためにfeatureのストアやlibsのProviderも参照します。
+routesは画面を組み立てるためにfeatureのストアやlibsのClient管理も参照します。
 共通componentsとhooksはドメインに依存しません。
 生成型・Documentは共通の `api` から参照します。
 
@@ -216,8 +232,8 @@ Biomeはワークスペース共通の設定です。Codegen生成物とビル�
 VS Code用の推奨拡張と保存時整形の設定も同梱しています。
 手書きのコメント・README・テスト名は日本語です。生成コードの説明文はCodegenの出力を維持しています。
 
-Vitestではヘッダー・キャッシュ・同時リクエストの分離、一覧の無効化、認証初期化、Cognito IDの照合、SSEのテナント分離と接続解除を確認します。
-Playwrightではログイン、全テナント一覧のダイアログ編集、管理者編集、商品詳細編集、直接アクセス、別タブからSSEで受信した更新とテナント切り替えを確認します。
+Vitestではヘッダー・キャッシュ・同時リクエストの分離、一覧の無効化、作成先テナントの指定、認証初期化、Cognito IDの照合、SSEのテナント分離と接続解除を確認します。
+Playwrightではログイン、全テナント一覧のダイアログ編集、作成先テナントを選ぶユーザー追加、管理者編集、商品詳細編集、直接アクセス、別タブからSSEで受信した更新とテナント切り替えを確認します。
 E2Eはポート4000と5173を使用し、起動済みのサーバーがあれば再利用します。
 本番ビルドを動かす場合は `pnpm build` 後に `pnpm --parallel --filter @example/backend --filter @example/frontend start` を実行します。
 開発・本番の両方で同じリソースルートがSSEを転送します。
